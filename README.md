@@ -1,9 +1,11 @@
 # WeiboBot
-exporting private chats from weibo 新浪微博私信备份导出
+exporting private chats from weibo 
 
-从“微博聊天网页版”导出私信记录，需要安装selenium和chromedriver
+新浪微博私信备份导出 （for python3)
 
-备份格式为html文件。会把私信中的图片下载到本地。
+从“微博聊天网页版”导出私信记录,需要安装selenium和chromedriver
+
+备份格式为html文件,会把私信中的非表情图片下载到本地
 
 用法：
 ```
