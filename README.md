@@ -1,7 +1,6 @@
 # WeiboBot
-exporting private chats from weibo 
 
-新浪微博私信备份导出 （for python3)
+新浪微博私信备份导出脚本 （for python3)
 
 从“微博聊天网页版”导出私信记录,需要安装selenium和chromedriver
 
