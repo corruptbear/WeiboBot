@@ -2,13 +2,22 @@
 
 新浪微博私信备份导出脚本 （for python3)
 
-从“微博聊天网页版”导出私信记录,需要安装selenium和chromedriver
-
-备份格式为html文件,会把私信中的非表情图片下载到本地
+2023年更新
+仅限网页版登陆下载导出
+备份格式为txt文件
 
 用法：
+```bash
+#默认操作: 下载所有非陌生人私信
+python3 wbbot.py
 ```
-bot=WeiboBot(directory="/Users/zpp/Downloads/weibo",headless=False) #directory是保存备份的文件夹
-bot.login(loginname="example@gmail.com",password="123456") #loginname和password是你的账号密码
-bot.save_chat(nickname="zhimatang",total_count=1000) #nickname是对方目前的微博昵称，total_count是一次保存的私信条数（从最新一条开始算，可以大于总历史私信条数）
+
+API示例
+```python
+#第一次使用时需要用手机扫码登录 (扫码完毕后关闭二维码图片，继续运行程序)
+b = WeiboBot()
+#保存私信(非陌生人私信)
+b.get_conversations_all()
+#保存和数字id为1234567890的用户的最近2000条私信(实际保存条数会略多)
+get_conversation(self, uid="1234567890", max_count=2000):
 ```
