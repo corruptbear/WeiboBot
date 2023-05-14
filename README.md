@@ -11,6 +11,8 @@
 #默认操作: 下载所有非陌生人私信
 python3 wbbot.py
 ```
+如需要更换登录账号,
+删除`cookies.pkl`文件即可
 
 API示例
 ```python
