@@ -11,6 +11,7 @@
 #下载本脚本
 git clone https://github.com/wsluo/WeiboBot/
 cd WeiboBot
+#安装dependency
 python3 -m pip install -r requirements.txt
 #直接运行以下命令，默认效果: 下载所有非陌生人私信
 python3 wbbot.py
@@ -24,10 +25,12 @@ python3 wbbot.py
 
 ## API示例
 ```python
-#第一次使用时需要用手机扫码登录 (扫码完毕后关闭二维码图片，继续运行程序)
+#第一次使用时需要用手机扫码登录 (扫码完毕后命令行界面提示成功，继续运行程序)
 b = WeiboBot()
 #保存私信(非陌生人私信)
 b.get_conversations_all()
 #保存和数字id为1234567890的用户的最近2000条私信(实际保存条数会略多)
-b.get_conversation(uid="1234567890", max_count=2000):
+b.get_conversation(uid="1234567890", max_count=2000)
+#获得用户的数字id (炸号/销号后可能无法返回数字id)
+uid = b.id_from_screenname("来去之间")
 ```

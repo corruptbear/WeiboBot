@@ -11,6 +11,8 @@ import re
 import matplotlib.pyplot as plt
 import pickle
 import sys
+import copy
+import time
 
 pwd = os.path.dirname(os.path.realpath(__file__))
 COOKIE_PATH = os.path.join(pwd, "sl_cookies.pkl")
@@ -41,6 +43,7 @@ DM_HEADERS =  {
     "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.14; rv:109.0) Gecko/20100101 Firefox/113.0",
 }
 
+
 def timestamp_ms():
     return str(1000*datetime.now(timezone.utc).timestamp())
 
@@ -69,22 +72,11 @@ class WeiboLoginBot:
 
     def get_qrcode(self):
         url = "https://login.sina.com.cn/sso/qrcode/image"
-        
-        headers = {
-        "Host": "login.sina.com.cn",
-        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.14; rv:109.0) Gecko/20100101 Firefox/113.0",
-        "Accept": "*/*",
-        "Accept-Language": "en-US,en;q=0.5",
-        "Accept-Encoding": "gzip, deflate, br",
-        "Connection": "keep-alive",
-        "Referer": "https://weibo.com/",
-        "Sec-Fetch-Dest": "script",
-        "Sec-Fetch-Mode": "no-cors",
-        "Sec-Fetch-Site": "cross-site",
-        "Pragma": "no-cache",
-        "Cache-Control": "no-cache",
-        "TE": "trailers",
-        }
+
+        headers = copy.deepcopy(LOGIN_HEADERS)
+        headers["Host"] = "login.sina.com.cn"
+        headers["TE"] = "trailers"
+        headers["Connection"] = "keep-alive"
 
         form = {
             "entry": "miniblog",
@@ -103,31 +95,32 @@ class WeiboLoginBot:
 
         url = response['data']['image']
         self._qrid = response['data']['qrid']
-        headers = {
-            "Host": "v2.qr.weibo.cn",
-            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.14; rv:109.0) Gecko/20100101 Firefox/113.0",
-            "Accept": "image/avif,image/webp,*/*",
-            "Accept-Language": "en-US,en;q=0.5",
-            "Accept-Encoding": "gzip, deflate, br",
-            "Connection": "keep-alive",
-            "Referer": "https://weibo.com/",
-            "Sec-Fetch-Dest": "image",
-            "Sec-Fetch-Mode": "no-cors",
-            "Sec-Fetch-Site": "cross-site",
-            "Pragma": "no-cache",
-            "Cache-Control": "no-cache",
-            "TE": "trailers",    
-        }
+
+        headers = copy.deepcopy(LOGIN_HEADERS)
+        headers["Host"] = "v2.qr.weibo.cn"
+        headers["TE"] = "trailers"
+        headers["Connection"] = "keep-alive"
+        headers["Accept"] = "image/avif,image/webp,*/*"
+        headers["Sec-Fetch-Dest"] = "image"
+
         display_msg("get qrcode image")
         r = self._session.get(url=url, headers=headers)
         print(r.status_code)
         image = Image.open(BytesIO(r.content))
-        plt.imshow(image)
-        plt.title("please scan the code to login")
-        plt.show()
-
+        self._fig = plt.figure(figsize=(2,2))
+        self._ax = self._fig.add_subplot()
+        self._ax.imshow(image)
+        self._ax.set_title("please scan the code to login",fontsize=8)
+        plt.show(block=False)
+        plt.pause(0.5)
 
     def scan_qrcode(self):
+        qrcode_success = "20000000"
+        qrcode_not_scanned = "50114001"
+        qrcode_scanned = "50114002"
+        qrcode_timeout = "50114003"
+        qrcode_exception = "50114015"
+
         url = "https://login.sina.com.cn/sso/qrcode/check"
 
         form = {
@@ -140,10 +133,30 @@ class WeiboLoginBot:
         r = self._session.get(url=url, headers=LOGIN_HEADERS,params=form)
         print(r.status_code)
         print(r.text)
-        match = re.search(r'{"retcode.*"}}', r.text)
-        response = json.loads(match.group(0))
-        self._alt = response["data"]["alt"]
-        print(self._alt)
+
+        match = re.search(r'"retcode":([0-9]{8})',r.text)
+        retcode = match.group(1)
+
+        if retcode == qrcode_success:
+            print("qr code scanning success!")
+            match = re.search(r'{"retcode.*"}}', r.text)
+            response = json.loads(match.group(0))
+            self._alt = response["data"]["alt"]
+            print(self._alt)
+        elif retcode == qrcode_timeout:
+            print("qr code timeout!")
+            sys.exit()
+        elif retcode == qrcode_exception:
+            print("qr code error!")
+            sys.exit()
+        else:
+            if retcode == qrcode_not_scanned:
+                print("qr code not scanned!")
+            if retcode == qrcode_scanned:
+                print("qr code scanned!")
+            time.sleep(1)
+            self.scan_qrcode()
+
 
     def sso_login(self):
         url = "https://login.sina.com.cn/sso/login.php"
@@ -236,19 +249,9 @@ class WeiboBot:
         
     def id_from_screenname(self, name):
         url = "https://weibo.com/ajax/user/popcard/get"
-        headers =  {
-            "Accept": "application/json, text/plain, */*",
-            "Accept-Language": "en-US,en;q=0.5",
-            "Accept-Encoding": "gzip, deflate, br",
-            "Pragma": "no-cache",
-            "Cache-Control": "no-cache",
-            "Referer":"https://weibo.com/",
-            "Sec-Fetch-Dest": "empty",
-            "Sec-Fetch-Mode": "cors",
-            "Sec-Fetch-Site": "same-origin",
-            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.14; rv:109.0) Gecko/20100101 Firefox/113.0",
-            "x-requested-with": "XMLHttpRequest"
-        }
+        headers = copy.deepcopy(DM_HEADERS)
+        headers["x-requested-with"] = "XMLHttpRequest"
+
         form = {"screen_name":name}
         r = self._session.get(url=url, headers=headers, params=form)
         print(r.status_code)
@@ -305,7 +308,7 @@ class WeiboBot:
             "source": "209678993",
             "t": timestamp_ms(),
         }
-        
+
         total_count = 0
         saved_msgs = []
         while True:
@@ -324,7 +327,7 @@ class WeiboBot:
                 saved_msgs.append({"created_at":msg["created_at"], "sender_screen_name":msg["sender_screen_name"], "text":msg["text"]})
             print(f"{total_count} messages fetched")
             form["max_id"] = str(int(dms[-1]["mid"])-1)
-        
+
         if screen_name is not None:
             f = open(f"{uid}_{screen_name}.txt","w")
         else:
