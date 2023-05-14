@@ -44,6 +44,9 @@ DM_HEADERS =  {
 def timestamp_ms():
     return str(1000*datetime.now(timezone.utc).timestamp())
 
+def reformat_timestamp(x):
+    return datetime.strptime(x, "%a %b %d %H:%M:%S %z %Y").strftime('%Y-%m-%d %H:%M:%S %a %z')
+
 def display_msg(msg):
     print(f"\n{msg:.>50}")
 
@@ -327,7 +330,7 @@ class WeiboBot:
         else:
             f = open(f"{uid}.txt", "w")
         for msg in reversed(saved_msgs):
-            f.write(f"{msg['created_at']} {msg['sender_screen_name']}\n")
+            f.write(f"{reformat_timestamp(msg['created_at'])} {msg['sender_screen_name']}\n")
             f.write(f"{msg['text']}\n")
 
 if __name__ == "__main__":
