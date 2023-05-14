@@ -1,4 +1,5 @@
 *.txt
+!requirements.txt
 *.html
 *.jpeg
 *.pkl
