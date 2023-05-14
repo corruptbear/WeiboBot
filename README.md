@@ -8,6 +8,10 @@
 
 用法：
 ```bash
+#下载本脚本
+git clone https://github.com/wsluo/WeiboBot/
+cd WeiboBot
+python3 -m pip install -r requirements.txt
 #默认操作: 下载所有非陌生人私信
 python3 wbbot.py
 ```
@@ -21,5 +25,5 @@ b = WeiboBot()
 #保存私信(非陌生人私信)
 b.get_conversations_all()
 #保存和数字id为1234567890的用户的最近2000条私信(实际保存条数会略多)
-get_conversation(self, uid="1234567890", max_count=2000):
+b.get_conversation(uid="1234567890", max_count=2000):
 ```
