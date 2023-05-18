@@ -9,7 +9,7 @@
 ## 用法
 ```bash
 #下载本脚本
-git clone https://github.com/wsluo/WeiboBot/
+git clone https://github.com/corruptbear/WeiboBot/
 cd WeiboBot
 #安装dependency
 python3 -m pip install -r requirements.txt
@@ -33,4 +33,6 @@ b.get_conversations_all()
 b.get_conversation(uid="1234567890", max_count=2000)
 #获得用户的数字id (炸号/销号后可能无法返回数字id)
 uid = b.id_from_screenname("来去之间")
+#获得用户的粉丝列表, 最多2000名
+b.get_followers(1642909335, max_count=1000, created_since="2023-01-01", created_before="2099-01-01", location_filter="北京")
 ```

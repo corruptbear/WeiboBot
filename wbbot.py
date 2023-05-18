@@ -263,6 +263,42 @@ class WeiboBot:
             print("id not found for the screen name")
             return None
 
+    def get_followers(self, uid, max_count = 10**10, location_filter=None, created_since=None, created_before=None):
+        url = "https://weibo.com/ajax/friendships/friends"
+        headers = copy.deepcopy(DM_HEADERS)
+        headers["x-requested-with"] = "XMLHttpRequest"
+        headers["Referer"] = f"https://weibo.com/u/page/follow/{uid}?relate=fans"
+
+        page = 0
+        total_count = 0 
+        while True:
+            form = {
+                'relate': 'fans',
+                'page': str(page),
+                'uid': str(uid),
+                'type': 'fans',
+                'newFollowerCount': '0'
+            }
+            page+=1
+            r = self._session.get(url=url, headers=headers, params=form)
+            print(r.status_code)
+            response = r.json()
+            users = response["users"]
+            total_count+=len(users)
+            print(f"{total_count} users fetched")
+            for user in users:
+                if location_filter is not None and user["location"] != location_filter:
+                    continue
+                if created_since is not None and datetime.strptime(user["created_at"], "%a %b %d %H:%M:%S %z %Y")<datetime.strptime(created_since, "%Y-%m-%d").replace(tzinfo=timezone.utc):
+                    continue
+                if created_before is not None and datetime.strptime(user["created_at"], "%a %b %d %H:%M:%S %z %Y")>datetime.strptime(created_before, "%Y-%m-%d").replace(tzinfo=timezone.utc):
+                    continue
+                print(user["id"],user["screen_name"], user["created_at"],user["credit_score"],user["urisk"])
+                yield user
+
+            if len(users)==0 or total_count>=max_count:
+                break
+
     def get_private_contacts(self):
         url = "https://api.weibo.com/webim/2/direct_messages/contacts.json"
         form = {
@@ -278,6 +314,7 @@ class WeiboBot:
         r = self._session.get(url=url, headers=DM_HEADERS, params=form)
         print(r.status_code)
         response = r.json()
+        print(response)
         contacts = response["contacts"]
 
         for contact in contacts:
