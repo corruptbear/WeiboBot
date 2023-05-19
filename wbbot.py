@@ -246,7 +246,7 @@ class WeiboBot:
         self._session.cookies = cookies
         display_msg("load cookies")
         display_session_cookies(self._session)
-        
+
     def id_from_screenname(self, name):
         url = "https://weibo.com/ajax/user/popcard/get"
         headers = copy.deepcopy(DM_HEADERS)
@@ -263,22 +263,12 @@ class WeiboBot:
             print("id not found for the screen name")
             return None
 
-    def get_followers(self, uid, max_count = 10**10, location_filter=None, created_since=None, created_before=None):
-        url = "https://weibo.com/ajax/friendships/friends"
-        headers = copy.deepcopy(DM_HEADERS)
-        headers["x-requested-with"] = "XMLHttpRequest"
-        headers["Referer"] = f"https://weibo.com/u/page/follow/{uid}?relate=fans"
-
+    def get_ff(self, uid,  url=None, headers=None, form=None, max_count=10**10, location_filter=None, created_since=None, created_before=None):
         page = 0
         total_count = 0 
         while True:
-            form = {
-                'relate': 'fans',
-                'page': str(page),
-                'uid': str(uid),
-                'type': 'fans',
-                'newFollowerCount': '0'
-            }
+            form['page']=str(page)
+            form['uid']=str(uid)
             page+=1
             r = self._session.get(url=url, headers=headers, params=form)
             print(r.status_code)
@@ -298,6 +288,27 @@ class WeiboBot:
 
             if len(users)==0 or total_count>=max_count:
                 break
+
+    def get_following(self, uid, max_count = 10**10, location_filter=None, created_since=None, created_before=None):
+        url = "https://weibo.com/ajax/friendships/friends"
+        headers = copy.deepcopy(DM_HEADERS)
+        headers["x-requested-with"] = "XMLHttpRequest"
+        headers["Referer"] = f"https://weibo.com/u/page/follow/{uid}"
+        form = dict()
+        yield from self.get_ff(uid,  url=url, headers=headers, form=form, max_count=max_count, location_filter=location_filter, created_since=created_since, created_before=created_before)
+
+    def get_followers(self, uid, max_count = 10**10, location_filter=None, created_since=None, created_before=None):
+        url = "https://weibo.com/ajax/friendships/friends"
+        headers = copy.deepcopy(DM_HEADERS)
+        headers["x-requested-with"] = "XMLHttpRequest"
+        headers["Referer"] = f"https://weibo.com/u/page/follow/{uid}?relate=fans"
+        form = {
+            'relate': 'fans',
+            'type': 'fans',
+            'newFollowerCount': '0'
+        }
+        yield from self.get_ff(uid, url=url, headers=headers, form=form, max_count=max_count, location_filter=location_filter, created_since=created_since, created_before=created_before)
+
 
     def get_private_contacts(self):
         url = "https://api.weibo.com/webim/2/direct_messages/contacts.json"
@@ -326,7 +337,7 @@ class WeiboBot:
     def get_public_contacts(self):
         url = "https://api.weibo.com/webim/2/direct_messages/public/contacts.json"
         #https://api.weibo.com/webim/2/direct_messages/public/contacts.json?count=50&cursor=0&source=209678993&t=1684022783795
-        
+
     def get_conversations_all(self):
         display_msg("save everything in private chat!")
         self.get_private_contacts()
@@ -374,5 +385,5 @@ class WeiboBot:
             f.write(f"{msg['text']}\n")
 
 if __name__ == "__main__":
-    b = WeiboBot()
+    b=WeiboBot()
     b.get_conversations_all()
