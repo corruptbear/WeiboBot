@@ -13,6 +13,7 @@ import pickle
 import sys
 import copy
 import time
+from urllib.parse import unquote
 
 pwd = os.path.dirname(os.path.realpath(__file__))
 COOKIE_PATH = os.path.join(pwd, "sl_cookies.pkl")
@@ -263,6 +264,59 @@ class WeiboBot:
             print("id not found for the screen name")
             return None
 
+    def get_profile_info(self, uid):
+        """
+        Returns: account status and user object
+        Even if the account has a custom url, if its status is normal, you should still be able to get the correct information using the numeric id
+        """
+        url = "https://weibo.com/ajax/profile/info"
+        headers = copy.deepcopy(DM_HEADERS)
+        headers["x-requested-with"] = "XMLHttpRequest"
+        headers["Referer"] = f"https://weibo.com/u/{uid}"
+
+        form = {"uid": str(uid)}
+        r = self._session.get(url=url, headers=headers, params=form)
+        print(f"uid-{uid} http status: {r.status_code}")
+        response = r.json()
+        result = {"uid":uid}
+        try:
+            user = response['data']['user']
+            print(f"{user['id']}, {user['screen_name']}, following: {user['friends_count']}, followers: {user['followers_count']}, status_count: {user['statuses_count']}")
+            result["status"]="normal"
+            result["user"]=user
+            return result
+        except:
+            result["user"]=None
+            print(response["error_type"]) #link or toast
+            if response["error_type"]=="link":
+                decoded_url = unquote(response["url"])
+                print(decoded_url)
+                if "投诉" in decoded_url:
+                    result["status"]="banned"
+                if "风险" in decoded_url:
+                    result["status"]="risky"
+            else:
+                result["status"]=response["error_type"]
+            return result
+
+    def get_profile_details(self, uid):
+        url = "https://weibo.com/ajax/profile/detail"
+        headers = copy.deepcopy(DM_HEADERS)
+        headers["x-requested-with"] = "XMLHttpRequest"
+        headers["Referer"] = f"https://weibo.com/u/{uid}"
+
+        form = {"uid": str(uid)}
+        r = self._session.get(url=url, headers=headers, params=form)
+        print(f"uid-{uid} http status: {r.status_code}")
+        response = r.json()
+        try:
+            data = response["data"]
+            print(f"{data['sunshine_credit']}, {data['created_at']}")
+            return data
+        except:
+            print(response['error_type'])
+            return None
+
     def get_ff(self, uid,  url=None, headers=None, form=None, max_count=10**10, location_filter=None, created_since=None, created_before=None):
         page = 0
         total_count = 0 
@@ -283,7 +337,7 @@ class WeiboBot:
                     continue
                 if created_before is not None and datetime.strptime(user["created_at"], "%a %b %d %H:%M:%S %z %Y")>datetime.strptime(created_before, "%Y-%m-%d").replace(tzinfo=timezone.utc):
                     continue
-                print(user["id"],user["screen_name"], user["created_at"],user["credit_score"],user["urisk"])
+                #print(user["id"],user["screen_name"], user["created_at"],user["credit_score"],user["urisk"], user["friends_count"], user["followers_count"], user["location"])
                 yield user
 
             if len(users)==0 or total_count>=max_count:
