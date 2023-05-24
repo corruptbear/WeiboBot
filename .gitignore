@@ -3,5 +3,5 @@
 *.html
 *.jpeg
 *.pkl
-weibo_scripts.py
+*scripts.py
 **/__pycache__/

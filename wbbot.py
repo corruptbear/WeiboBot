@@ -15,6 +15,9 @@ import copy
 import time
 from urllib.parse import unquote
 
+import aiohttp
+import asyncio
+
 pwd = os.path.dirname(os.path.realpath(__file__))
 COOKIE_PATH = os.path.join(pwd, "sl_cookies.pkl")
 
@@ -264,20 +267,7 @@ class WeiboBot:
             print("id not found for the screen name")
             return None
 
-    def get_profile_info(self, uid):
-        """
-        Returns: account status and user object
-        Even if the account has a custom url, if its status is normal, you should still be able to get the correct information using the numeric id
-        """
-        url = "https://weibo.com/ajax/profile/info"
-        headers = copy.deepcopy(DM_HEADERS)
-        headers["x-requested-with"] = "XMLHttpRequest"
-        headers["Referer"] = f"https://weibo.com/u/{uid}"
-
-        form = {"uid": str(uid)}
-        r = self._session.get(url=url, headers=headers, params=form)
-        print(f"uid-{uid} http status: {r.status_code}")
-        response = r.json()
+    def _extract_user_from_info(self, uid=None, response=None):
         result = {"uid":uid}
         try:
             user = response['data']['user']
@@ -293,11 +283,49 @@ class WeiboBot:
                 print(decoded_url)
                 if "投诉" in decoded_url:
                     result["status"]="banned"
-                if "风险" in decoded_url:
+                if "验证" in decoded_url:
+                    #该账号内容存在风险，用户验证之前暂时不能查看
+                    #该账号行为异常，存在安全风险，用户验证之前暂时不能查看
+                    #该账号当前处于异常状态，用户验证之前暂时不能查看
                     result["status"]="risky"
+                if "自行" in decoded_url:
+                    #该账号因用户自行申请关闭，现已无法查看
+                    result["status"]="closed"
             else:
                 result["status"]=response["error_type"]
             return result
+
+    def get_profile_info(self, uid):
+        """
+        Returns: account status and user object
+        Even if the account has a custom url, if its status is normal, you should still be able to get the correct information using the numeric id
+        """
+        url = "https://weibo.com/ajax/profile/info"
+        headers = copy.deepcopy(DM_HEADERS)
+        headers["x-requested-with"] = "XMLHttpRequest"
+        headers["Referer"] = f"https://weibo.com/u/{uid}"
+
+        form = {"uid": str(uid)}
+        r = self._session.get(url=url, headers=headers, params=form)
+        print(f"uid-{uid} http status: {r.status_code}")
+        response = r.json()
+        result = {"uid":uid}
+        return self._extract_user_from_info(uid=uid, response=response)
+
+    async def get_profile_info_async(self, session, uid):
+        """
+        Returns: account status and user object
+        Even if the account has a custom url, if its status is normal, you should still be able to get the correct information using the numeric id
+        """
+        url = "https://weibo.com/ajax/profile/info"
+        headers = copy.deepcopy(DM_HEADERS)
+        headers["x-requested-with"] = "XMLHttpRequest"
+        headers["Referer"] = f"https://weibo.com/u/{uid}"
+        form = {"uid": str(uid)}
+        async with session.get(url, headers=headers, params=form) as r:
+            response = await r.json()
+            print(f"uid-{uid} http status: {r.status}")
+            return self._extract_user_from_info(uid=uid, response=response)
 
     def get_profile_details(self, uid):
         url = "https://weibo.com/ajax/profile/detail"
@@ -309,6 +337,7 @@ class WeiboBot:
         r = self._session.get(url=url, headers=headers, params=form)
         print(f"uid-{uid} http status: {r.status_code}")
         response = r.json()
+        print(response)
         try:
             data = response["data"]
             print(f"{data['sunshine_credit']}, {data['created_at']}")
@@ -317,7 +346,7 @@ class WeiboBot:
             print(response['error_type'])
             return None
 
-    def get_ff(self, uid,  url=None, headers=None, form=None, max_count=10**10, location_filter=None, created_since=None, created_before=None):
+    def _get_relationship(self, uid,  url=None, headers=None, form=None, max_count=10**10, location_filter=None, created_since=None, created_before=None):
         page = 0
         total_count = 0 
         while True:
@@ -349,7 +378,7 @@ class WeiboBot:
         headers["x-requested-with"] = "XMLHttpRequest"
         headers["Referer"] = f"https://weibo.com/u/page/follow/{uid}"
         form = dict()
-        yield from self.get_ff(uid,  url=url, headers=headers, form=form, max_count=max_count, location_filter=location_filter, created_since=created_since, created_before=created_before)
+        yield from self._get_relationship(uid,  url=url, headers=headers, form=form, max_count=max_count, location_filter=location_filter, created_since=created_since, created_before=created_before)
 
     def get_followers(self, uid, max_count = 10**10, location_filter=None, created_since=None, created_before=None):
         url = "https://weibo.com/ajax/friendships/friends"
@@ -361,7 +390,7 @@ class WeiboBot:
             'type': 'fans',
             'newFollowerCount': '0'
         }
-        yield from self.get_ff(uid, url=url, headers=headers, form=form, max_count=max_count, location_filter=location_filter, created_since=created_since, created_before=created_before)
+        yield from self._get_relationship(uid, url=url, headers=headers, form=form, max_count=max_count, location_filter=location_filter, created_since=created_since, created_before=created_before)
 
 
     def get_private_contacts(self):
