@@ -276,6 +276,8 @@ class WeiboBot:
             result["user"]=user
             return result
         except:
+            print(uid)
+            print(response)
             result["user"]=None
             print(response["error_type"]) #link or toast
             if response["error_type"]=="link":
@@ -337,14 +339,32 @@ class WeiboBot:
         r = self._session.get(url=url, headers=headers, params=form)
         print(f"uid-{uid} http status: {r.status_code}")
         response = r.json()
-        print(response)
         try:
             data = response["data"]
-            print(f"{data['sunshine_credit']}, {data['created_at']}")
+            data["uid"] = uid
+            #print(f"{data['sunshine_credit']}, {data['created_at']}")
             return data
         except:
             print(response['error_type'])
             return None
+
+    async def get_profile_details_async(self, session, uid):
+        url = "https://weibo.com/ajax/profile/detail"
+        headers = copy.deepcopy(DM_HEADERS)
+        headers["x-requested-with"] = "XMLHttpRequest"
+        headers["Referer"] = f"https://weibo.com/u/{uid}"
+        form = {"uid": str(uid)}
+        async with session.get(url, headers=headers, params=form) as r:
+            response = await r.json()
+            print(f"uid-{uid} http status: {r.status}")
+            try:
+                data = response["data"]
+                data["uid"] = uid
+                #print(f"{data['sunshine_credit']}, {data['created_at']}")
+                return data
+            except:
+                print(uid, response['error_type'])
+                return None
 
     def _get_relationship(self, uid,  url=None, headers=None, form=None, max_count=10**10, location_filter=None, created_since=None, created_before=None):
         page = 0
