@@ -4,4 +4,5 @@
 *.jpeg
 *.pkl
 *scripts.py
+*.csv
 **/__pycache__/

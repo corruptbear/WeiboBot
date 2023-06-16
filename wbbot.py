@@ -18,6 +18,9 @@ from urllib.parse import unquote
 import aiohttp
 import asyncio
 
+import logging
+logger = logging.getLogger(__name__)
+
 pwd = os.path.dirname(os.path.realpath(__file__))
 COOKIE_PATH = os.path.join(pwd, "sl_cookies.pkl")
 
@@ -92,7 +95,7 @@ class WeiboLoginBot:
 
         display_msg("get qrcode")
         r = self._session.get(url=url, headers=headers, params=form)
-        print(r.status_code)
+        logger.debug(r.status_code)
 
         match = re.search(r'{"retcode.*type=url"}}', r.text)
         response = json.loads(match.group(0))
@@ -109,7 +112,7 @@ class WeiboLoginBot:
 
         display_msg("get qrcode image")
         r = self._session.get(url=url, headers=headers)
-        print(r.status_code)
+        logger.debug(r.status_code)
         image = Image.open(BytesIO(r.content))
         self._fig = plt.figure(figsize=(2,2))
         self._ax = self._fig.add_subplot()
@@ -135,29 +138,29 @@ class WeiboLoginBot:
 
         display_msg("qrcode check")
         r = self._session.get(url=url, headers=LOGIN_HEADERS,params=form)
-        print(r.status_code)
-        print(r.text)
+        logger.debug(r.status_code)
+        logger.debug(r.text)
 
         match = re.search(r'"retcode":([0-9]{8})',r.text)
         retcode = match.group(1)
 
         if retcode == qrcode_success:
-            print("qr code scanning success!")
+            logger.info("qr code scanning success!")
             match = re.search(r'{"retcode.*"}}', r.text)
             response = json.loads(match.group(0))
             self._alt = response["data"]["alt"]
-            print(self._alt)
+            logger.debug(self._alt)
         elif retcode == qrcode_timeout:
-            print("qr code timeout!")
+            logger.error("qr code timeout!")
             sys.exit()
         elif retcode == qrcode_exception:
-            print("qr code error!")
+            logger.error("qr code error!")
             sys.exit()
         else:
             if retcode == qrcode_not_scanned:
-                print("qr code not scanned!")
+                logger.error("qr code not scanned!")
             if retcode == qrcode_scanned:
-                print("qr code scanned!")
+                logger.info("qr code scanned!")
             time.sleep(1)
             self.scan_qrcode()
 
@@ -177,10 +180,10 @@ class WeiboLoginBot:
 
         display_msg("sso login")
         r = self._session.get(url=url, headers=LOGIN_HEADERS,params=form)
-        print(r.status_code)
+        logger.debug(r.status_code)
         match = re.search(r'{"retcode.*"]}', r.text)
         response = json.loads(match.group(0))
-        print(response)
+        logger.debug(response)
         uid = response["uid"]
 
         url1 = response["crossDomainUrlList"][0]
@@ -194,13 +197,13 @@ class WeiboLoginBot:
 
         display_msg("cross domain url 1")
         r = self._session.get(url=url1, headers=LOGIN_HEADERS,params=form)
-        print(r.status_code)
-        print(r.text)
+        logger.debug(r.status_code)
+        logger.debug(r.text)
 
         display_msg("cross domain url 2")
         r = self._session.get(url=url2, headers=LOGIN_HEADERS)
-        print(r.status_code)
-        print(r.text)
+        logger.debug(r.status_code)
+        logger.debug(r.text)
 
         url = "https://passport.weibo.com/wbsso/login"
         form = {
@@ -210,15 +213,15 @@ class WeiboLoginBot:
 
         display_msg("cross domain url 3")
         r = self._session.get(url=url3, headers=LOGIN_HEADERS, params=form)
-        print(r.status_code)
+        logger.debug(r.status_code)
         match = re.search(r'{"result.*"}}', r.text)
         response = json.loads(match.group(0))
-        print(response)
+        logger.debug(response)
 
         url = "https://weibo.com"
         r = self._session.get(url=url, headers=LOGIN_HEADERS)
-        print(r.status_code)
-        print(r.text)
+        logger.debug(r.status_code)
+        logger.debug(r.text)
 
         display_msg("cookies")
         display_session_cookies(self._session)
@@ -243,7 +246,7 @@ class WeiboBot:
     def test_login(self):
         r = self._session.get(url="https://weibo.com", headers=LOGIN_HEADERS)
         if r.status_code!=200:
-            print("login fails, please delete the cookie file and retry")
+            logger.critical("login fails, please delete the cookie file and retry")
 
     def load_cookies(self):
         cookies = pickle.load(open(COOKIE_PATH, "rb"))
@@ -258,31 +261,31 @@ class WeiboBot:
 
         form = {"screen_name":name}
         r = self._session.get(url=url, headers=headers, params=form)
-        print(r.status_code)
+        logger.debug(r.status_code)
         response = r.json()
         data = response["data"]
         if "idstr" in data:
             return data["idstr"]
         else:
-            print("id not found for the screen name")
+            logger.info("id not found for the screen name")
             return None
 
     def _extract_user_from_info(self, uid=None, response=None):
         result = {"uid":uid}
         try:
             user = response['data']['user']
-            print(f"{user['id']}, {user['screen_name']}, following: {user['friends_count']}, followers: {user['followers_count']}, status_count: {user['statuses_count']}")
+            logger.info(f"{user['id']}, {user['screen_name']}, following: {user['friends_count']}, followers: {user['followers_count']}, status_count: {user['statuses_count']}")
             result["status"]="normal"
             result["user"]=user
             return result
         except:
-            print(uid)
-            print(response)
+            logger.debug(uid)
+            logger.debug(response)
             result["user"]=None
-            print(response["error_type"]) #link or toast
+            logger.debug(f"{response['error_type']}") #link or toast
             if response["error_type"]=="link":
                 decoded_url = unquote(response["url"])
-                print(decoded_url)
+                logger.info(decoded_url)
                 if "投诉" in decoded_url:
                     result["status"]="banned"
                 if "验证" in decoded_url:
@@ -309,7 +312,7 @@ class WeiboBot:
 
         form = {"uid": str(uid)}
         r = self._session.get(url=url, headers=headers, params=form)
-        print(f"uid-{uid} http status: {r.status_code}")
+        logger.debug(f"uid-{uid} http status: {r.status_code}")
         response = r.json()
         result = {"uid":uid}
         return self._extract_user_from_info(uid=uid, response=response)
@@ -326,7 +329,7 @@ class WeiboBot:
         form = {"uid": str(uid)}
         async with session.get(url, headers=headers, params=form) as r:
             response = await r.json()
-            print(f"uid-{uid} http status: {r.status}")
+            logger.debug(f"uid-{uid} http status: {r.status}")
             return self._extract_user_from_info(uid=uid, response=response)
 
     def get_profile_details(self, uid):
@@ -337,7 +340,7 @@ class WeiboBot:
 
         form = {"uid": str(uid)}
         r = self._session.get(url=url, headers=headers, params=form)
-        print(f"uid-{uid} http status: {r.status_code}")
+        logger.debug(f"uid-{uid} http status: {r.status_code}")
         response = r.json()
         try:
             data = response["data"]
@@ -345,7 +348,7 @@ class WeiboBot:
             #print(f"{data['sunshine_credit']}, {data['created_at']}")
             return data
         except:
-            print(response['error_type'])
+            logger.debug("{response['error_type']}")
             return None
 
     async def get_profile_details_async(self, session, uid):
@@ -356,14 +359,14 @@ class WeiboBot:
         form = {"uid": str(uid)}
         async with session.get(url, headers=headers, params=form) as r:
             response = await r.json()
-            print(f"uid-{uid} http status: {r.status}")
+            logger.debug(f"uid-{uid} http status: {r.status}")
             try:
                 data = response["data"]
                 data["uid"] = uid
                 #print(f"{data['sunshine_credit']}, {data['created_at']}")
                 return data
             except:
-                print(uid, response['error_type'])
+                logger.debug(f"{uid}, {response['error_type']}")
                 return None
 
     def _get_relationship(self, uid,  url=None, headers=None, form=None, max_count=10**10, location_filter=None, created_since=None, created_before=None):
@@ -374,11 +377,11 @@ class WeiboBot:
             form['uid']=str(uid)
             page+=1
             r = self._session.get(url=url, headers=headers, params=form)
-            print(r.status_code)
+            logger.debug(r.status_code)
             response = r.json()
             users = response["users"]
             total_count+=len(users)
-            print(f"{total_count} users fetched")
+            logger.info(f"{total_count} users fetched")
             for user in users:
                 if location_filter is not None and user["location"] != location_filter:
                     continue
@@ -426,13 +429,13 @@ class WeiboBot:
             "t": timestamp_ms(),
         }
         r = self._session.get(url=url, headers=DM_HEADERS, params=form)
-        print(r.status_code)
+        logger.debug(r.status_code)
         response = r.json()
-        print(response)
+        logger.debug(response)
         contacts = response["contacts"]
 
         for contact in contacts:
-            print(contact["user"])
+            logger.info(f"{contact['user']}")
             #not strangers
             if "idstr" in contact["user"]:
                 self._contacts[contact["user"]["idstr"]] = contact["user"]["name"]
@@ -466,7 +469,7 @@ class WeiboBot:
             if total_count >= max_count:
                 break
             r = self._session.get(url=url, headers=DM_HEADERS, params=form)
-            print(r.status_code)
+            logger.debug(r.status_code)
             response = r.json()
             dms = response["direct_messages"]
             total_count+=len(dms)
