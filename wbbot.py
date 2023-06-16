@@ -327,10 +327,14 @@ class WeiboBot:
         headers["x-requested-with"] = "XMLHttpRequest"
         headers["Referer"] = f"https://weibo.com/u/{uid}"
         form = {"uid": str(uid)}
-        async with session.get(url, headers=headers, params=form) as r:
-            response = await r.json()
-            logger.debug(f"uid-{uid} http status: {r.status}")
-            return self._extract_user_from_info(uid=uid, response=response)
+        try:
+            async with session.get(url, headers=headers, params=form) as r:
+                response = await r.json()
+                logger.debug(f"uid-{uid} http status: {r.status}")
+                return self._extract_user_from_info(uid=uid, response=response)
+        except:
+            return None
+
 
     def get_profile_details(self, uid):
         url = "https://weibo.com/ajax/profile/detail"
@@ -348,7 +352,7 @@ class WeiboBot:
             #print(f"{data['sunshine_credit']}, {data['created_at']}")
             return data
         except:
-            logger.debug("{response['error_type']}")
+            logger.debug(f"{response['error_type']}")
             return None
 
     async def get_profile_details_async(self, session, uid):
@@ -357,17 +361,21 @@ class WeiboBot:
         headers["x-requested-with"] = "XMLHttpRequest"
         headers["Referer"] = f"https://weibo.com/u/{uid}"
         form = {"uid": str(uid)}
-        async with session.get(url, headers=headers, params=form) as r:
-            response = await r.json()
-            logger.debug(f"uid-{uid} http status: {r.status}")
-            try:
-                data = response["data"]
-                data["uid"] = uid
-                #print(f"{data['sunshine_credit']}, {data['created_at']}")
-                return data
-            except:
-                logger.debug(f"{uid}, {response['error_type']}")
-                return None
+        try:
+            async with session.get(url, headers=headers, params=form) as r:
+                response = await r.json()
+                logger.debug(f"uid-{uid} http status: {r.status}")
+                try:
+                    data = response["data"]
+                    data["uid"] = uid
+                    #print(f"{data['sunshine_credit']}, {data['created_at']}")
+                    return data
+                except:
+                    logger.debug(f"{uid}, {response['error_type']}")
+                    return None
+        except:
+            return None
+
 
     def _get_relationship(self, uid,  url=None, headers=None, form=None, max_count=10**10, location_filter=None, created_since=None, created_before=None):
         page = 0
