@@ -376,6 +376,25 @@ class WeiboBot:
         except:
             return None
 
+    def _extract_mute_status(self, uid=None,response=None):
+        logger.debug(response)
+        result = {"uid":uid}
+        if "data" not in response:
+            result["status"] = "not_existed"
+        else:
+            data = response['data']
+            if "text" not in data:
+                result["status"] = "not_muted"
+            else:
+                text = data["text"]
+                #因违反社区公约，该用户目前处于禁言状态
+                if "处于禁言状态" in text:
+                    result["status"] = "temporary_muted"
+                #因违反社区公约，该用户处于永久禁言状态
+                elif "永久禁言" in text:
+                    result["status"] = "permanent_muted"
+        return result
+
     def check_muted(self, uid):
         url = "https://weibo.com/ajax/profile/getMuteuser"
         headers = copy.deepcopy(DM_HEADERS)
@@ -387,19 +406,21 @@ class WeiboBot:
         logger.debug(f"uid-{uid} http status: {r.status_code}")
         try:
             response = r.json()
-            logger.debug(response)
-            if "data" not in response:
-                return "not_existed"
-            data = response['data']
-            if "text" not in data:
-                return "not_muted"
-            text = data["text"]
-            #因违反社区公约，该用户目前处于禁言状态
-            if "处于禁言状态" in text:
-                return "temporary_muted"
-            #因违反社区公约，该用户处于永久禁言状态
-            if "永久禁言" in text:
-                return "permanent_muted"
+            return self._extract_mute_status(uid=uid,response=response)
+        except:
+            return None
+
+    async def check_muted_async(self, session, uid):
+        url = "https://weibo.com/ajax/profile/getMuteuser"
+        headers = copy.deepcopy(DM_HEADERS)
+        headers["x-requested-with"] = "XMLHttpRequest"
+        headers["Referer"] = f"https://weibo.com/u/{uid}"
+        form = {"uid": str(uid)}
+        try:
+            async with session.get(url, headers=headers, params=form) as r:
+                response = await r.json()
+                logger.debug(f"check_muted_async: uid-{uid} http status: {r.status}")
+                return self._extract_mute_status(uid=uid, response=response)
         except:
             return None
 
