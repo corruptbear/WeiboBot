@@ -376,6 +376,32 @@ class WeiboBot:
         except:
             return None
 
+    def check_muted(self, uid):
+        url = "https://weibo.com/ajax/profile/getMuteuser"
+        headers = copy.deepcopy(DM_HEADERS)
+        headers["x-requested-with"] = "XMLHttpRequest"
+        headers["Referer"] = f"https://weibo.com/u/{uid}"
+        form = {"uid": str(uid)}
+
+        r = self._session.get(url=url, headers=headers, params=form)
+        logger.debug(f"uid-{uid} http status: {r.status_code}")
+        try:
+            response = r.json()
+            logger.debug(response)
+            if "data" not in response:
+                return "not_existed"
+            data = response['data']
+            if "text" not in data:
+                return "not_muted"
+            text = data["text"]
+            #因违反社区公约，该用户目前处于禁言状态
+            if "处于禁言状态" in text:
+                return "temporary_muted"
+            #因违反社区公约，该用户处于永久禁言状态
+            if "永久禁言" in text:
+                return "permanent_muted"
+        except:
+            return None
 
     def _get_relationship(self, uid,  url=None, headers=None, form=None, max_count=10**10, location_filter=None, created_since=None, created_before=None):
         page = 0
