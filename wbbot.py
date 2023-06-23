@@ -272,6 +272,7 @@ class WeiboBot:
 
     def _extract_user_from_info(self, uid=None, response=None):
         result = {"uid":uid}
+        logger.debug(response)
         try:
             user = response['data']['user']
             logger.info(f"{user['id']}, {user['screen_name']}, following: {user['friends_count']}, followers: {user['followers_count']}, status_count: {user['statuses_count']}")
@@ -404,6 +405,8 @@ class WeiboBot:
 
         r = self._session.get(url=url, headers=headers, params=form)
         logger.debug(f"uid-{uid} http status: {r.status_code}")
+        if r.status_code!=200:
+            return None
         try:
             response = r.json()
             return self._extract_mute_status(uid=uid,response=response)
@@ -420,9 +423,36 @@ class WeiboBot:
             async with session.get(url, headers=headers, params=form) as r:
                 response = await r.json()
                 logger.debug(f"check_muted_async: uid-{uid} http status: {r.status}")
+                if r.status!=200:
+                    return None
                 return self._extract_mute_status(uid=uid, response=response)
         except:
             return None
+
+    def get_posts(self, uid, start_page = None):
+        url = "https://weibo.com/ajax/statuses/mymblog"
+        headers = copy.deepcopy(DM_HEADERS)
+        headers["x-requested-with"] = "XMLHttpRequest"
+        headers["Referer"] = f"https://weibo.com/u/{uid}?tabtype=feed"
+        form = {
+            "uid": uid,
+            "page": 1,
+            "feature": 0,
+        }
+        if start_page is not None:
+            form["page"] = start_page
+        while True:
+            print(form["page"])
+            r = self._session.get(url=url, headers=headers, params=form)
+            logger.debug(r.status_code)
+            logger.debug(r.text)
+            response = r.json()
+            posts = response["data"]["list"]
+            if len(posts)==0:
+                break
+            for post in posts:
+                yield post
+            form["page"]+=1
 
     def _get_relationship(self, uid,  url=None, headers=None, form=None, max_count=10**10, location_filter=None, created_since=None, created_before=None):
         page = 0
