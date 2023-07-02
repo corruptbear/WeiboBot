@@ -236,17 +236,20 @@ class WeiboBot:
             self.load_cookies()
         except:
             display_msg("getting new cookies")
-            b = WeiboLoginBot()
-            b.login()
-
-            self.load_cookies()
+            self.refresh_cookies()
 
         self.test_login()
 
+    def refresh_cookies(self):
+        b = WeiboLoginBot()
+        b.login()
+        self.load_cookies()
+
     def test_login(self):
         r = self._session.get(url="https://weibo.com", headers=LOGIN_HEADERS)
-        if r.status_code!=200:
+        if "https://weibo.com/favicon.ico" not in r.text:
             logger.critical("login fails, please delete the cookie file and retry")
+            self.refresh_cookies()
 
     def load_cookies(self):
         cookies = pickle.load(open(COOKIE_PATH, "rb"))
