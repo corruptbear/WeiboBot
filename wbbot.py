@@ -24,6 +24,8 @@ logger = logging.getLogger(__name__)
 pwd = os.path.dirname(os.path.realpath(__file__))
 COOKIE_PATH = os.path.join(pwd, "sl_cookies.pkl")
 
+MAX_RETRY = 5
+
 LOGIN_HEADERS = {
     "Accept": "*/*",
     "Accept-Language": "en-US,en;q=0.5",
@@ -444,18 +446,27 @@ class WeiboBot:
         }
         if start_page is not None:
             form["page"] = start_page
+        retry_count = 0
         while True:
             print(form["page"])
             r = self._session.get(url=url, headers=headers, params=form)
             logger.debug(r.status_code)
             logger.debug(r.text)
-            response = r.json()
+            if r.status_code == 200:
+                response = r.json()
+            else:
+                if retry_count == MAX_RETRY:
+                    break
+                time.sleep(1)
+                retry_count+=1
+                continue
             posts = response["data"]["list"]
             if len(posts)==0:
                 break
             for post in posts:
                 yield post
             form["page"]+=1
+            retry_count = 0
 
     def _get_relationship(self, uid,  url=None, headers=None, form=None, max_count=10**10, location_filter=None, created_since=None, created_before=None):
         page = 0
@@ -571,9 +582,9 @@ class WeiboBot:
             form["max_id"] = str(int(dms[-1]["mid"])-1)
 
         if screen_name is not None:
-            f = open(f"{uid}_{screen_name}.txt","w")
+            f = open(f"{uid}_{screen_name}.txt","w",encoding="UTF-8")
         else:
-            f = open(f"{uid}.txt", "w")
+            f = open(f"{uid}.txt", "w",encoding="UTF-8")
         for msg in reversed(saved_msgs):
             f.write(f"{reformat_timestamp(msg['created_at'])} {msg['sender_screen_name']}\n")
             f.write(f"{msg['text']}\n")
