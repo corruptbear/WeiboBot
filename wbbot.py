@@ -581,10 +581,13 @@ class WeiboBot:
             print(f"{total_count} messages fetched")
             form["max_id"] = str(int(dms[-1]["mid"])-1)
 
+        save_folder = "saves"
+        if not os.path.exists(save_folder):
+            os.mkdir(save_folder)
         if screen_name is not None:
-            f = open(f"{uid}_{screen_name}.txt","w",encoding="UTF-8")
+            f = open(os.path.join(save_folder, f"{uid}_{screen_name}.txt"),"w",encoding="UTF-8")
         else:
-            f = open(f"{uid}.txt", "w",encoding="UTF-8")
+            f = open(os.path.join(save_folder, f"{uid}.txt"), "w",encoding="UTF-8")
         for msg in reversed(saved_msgs):
             f.write(f"{reformat_timestamp(msg['created_at'])} {msg['sender_screen_name']}\n")
             f.write(f"{msg['text']}\n")
