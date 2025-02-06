@@ -230,6 +230,7 @@ class WeiboLoginBot:
         self.save_cookies()
 
 class WeiboBot:
+    _no_login_session = requests.Session()
     def __init__(self):
         self._session = requests.Session()
         self._contacts = dict()
@@ -435,6 +436,9 @@ class WeiboBot:
             return None
 
     def get_posts(self, uid, start_page = None):
+        """
+        could get "更多内容请至客户端查看" on web client; in this case should use get_m_posts
+        """
         url = "https://weibo.com/ajax/statuses/mymblog"
         headers = copy.deepcopy(DM_HEADERS)
         headers["x-requested-with"] = "XMLHttpRequest"
@@ -454,6 +458,7 @@ class WeiboBot:
             logger.debug(r.text)
             if r.status_code == 200:
                 response = r.json()
+                retry_count = 0
             else:
                 if retry_count == MAX_RETRY:
                     break
@@ -467,6 +472,42 @@ class WeiboBot:
                 yield post
             form["page"]+=1
             retry_count = 0
+
+    @staticmethod
+    def get_m_posts(uid, max_page_count = -1):
+        url = f"https://m.weibo.cn/api/container/getIndex"
+        headers = copy.deepcopy(DM_HEADERS)
+        headers["Referer"] = f"https://m.weibo.cn/u/{uid}"
+        headers["x-requested-with"] = "XMLHttpRequest"
+        form = {
+            "type": "uid",
+            "value": uid,
+            "containerid": f"107603{uid}"
+        }
+        fetch_count = 0
+        retry_count = 0
+        while True:
+            r = WeiboBot._no_login_session.get(url=url, headers=headers, params=form)
+            logger.debug(r.status_code)
+            logger.debug(r.text)
+            if r.status_code == 200:
+                response = r.json()
+                retry_count = 0
+                fetch_count+=1
+            else:
+                if retry_count == MAX_RETRY:
+                    break
+                time.sleep(1)
+                retry_count+=1
+                continue
+            cards = response["data"]["cards"]
+            if len(cards) == 0:
+                break
+            for card in cards:
+                yield card["mblog"]
+            form["since_id"] = response["data"]["cardlistInfo"]["since_id"]
+            if fetch_count == max_page_count:
+                break
 
     def _get_relationship(self, uid,  url=None, headers=None, form=None, max_count=10**10, location_filter=None, created_since=None, created_before=None):
         page = 0
