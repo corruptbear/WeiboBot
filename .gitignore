@@ -3,7 +3,7 @@
 *.html
 *.jpeg
 *.pkl
-*scripts.py
+*script*.py
 *.csv
 *.yaml
 *.log

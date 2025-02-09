@@ -14,12 +14,15 @@ import sys
 import copy
 import time
 from urllib.parse import unquote
-
+import re
+from fake_useragent import UserAgent
 import aiohttp
 import asyncio
 
 import logging
 logger = logging.getLogger(__name__)
+
+ua = UserAgent()
 
 pwd = os.path.dirname(os.path.realpath(__file__))
 COOKIE_PATH = os.path.join(pwd, "sl_cookies.pkl")
@@ -250,7 +253,9 @@ class WeiboBot:
 
     def test_login(self):
         r = self._session.get(url="https://weibo.com", headers=LOGIN_HEADERS)
-        if "https://weibo.com/favicon.ico" not in r.text:
+        if r.status_code in [414, 418]:
+            logger.critical("rate limited with 418 error")
+        elif "https://weibo.com/favicon.ico" not in r.text:
             logger.critical("login fails, please delete the cookie file and retry")
             self.refresh_cookies()
 
@@ -276,40 +281,73 @@ class WeiboBot:
             logger.info("id not found for the screen name")
             return None
 
-    def _extract_user_from_info(self, uid=None, response=None):
+    @staticmethod
+    def get_visitor_sub():
+        url = "https://passport.weibo.com/visitor/genvisitor2"
+        headers = copy.deepcopy(DM_HEADERS)
+        del headers["Referer"]
+        headers["content-type"] = "application/x-www-form-urlencoded"
+        headers["origin"] = "https://passport.weibo.com"
+        # it seems that weibo uses some fingerprinting to try to catch simple ip-switching
+        headers["User-Agent"] = ua.random
+        data = {
+            "cb": "visitor_gray_callback",
+            "tid":"",
+            "from": "weibo",
+        }
+        response = requests.post(url, headers=headers, data=data)
+        match = re.search(r'"sub":"(.*?)"', response.text)
+        if match:
+            sub_value = match.group(1)
+        return sub_value
+
+    def _extract_user_from_info(self, uid=None, response=None, status_code=None):
+        if 'msg' in response:
+            if '访问频次过高' in response['msg']:
+                logger.info(f"{uid}, 访问频次过高")
+                return None
         result = {"uid":uid}
+        # perhaps 自行申请关闭 ???
+        if status_code == 400:
+            result["status"] = "账号有问题"
         logger.debug(response)
         try:
             user = response['data']['user']
             logger.info(f"{user['id']}, {user['screen_name']}, following: {user['friends_count']}, followers: {user['followers_count']}, status_count: {user['statuses_count']}")
             result["status"]="normal"
             result["user"]=user
+            if "blockText" in response["data"]:
+                if "该用户因违反《微博社区公约》，已被限制内容仅互粉好友可见" in response["data"]["blockText"]:
+                    result["status"]="visibility_restricted_friend_circle"
             return result
         except:
             logger.debug(uid)
-            logger.debug(response)
             result["user"]=None
-            logger.debug(f"{response['error_type']}") #link or toast
-            if response["error_type"]=="link":
-                decoded_url = unquote(response["url"])
-                logger.info(decoded_url)
-                if "投诉" in decoded_url:
-                    result["status"]="banned"
-                if "验证" in decoded_url:
-                    #该账号内容存在风险，用户验证之前暂时不能查看
-                    #该账号行为异常，存在安全风险，用户验证之前暂时不能查看
-                    #该账号当前处于异常状态，用户验证之前暂时不能查看
-                    result["status"]="risky"
-                if "自行" in decoded_url:
-                    #该账号因用户自行申请关闭，现已无法查看
-                    result["status"]="closed"
-            else:
-                result["status"]=response["error_type"]
+            if 'error_type' in response:
+                logger.debug(f"{response['error_type']}") #link or toast
+                if response["error_type"]=="link":
+                    decoded_url = unquote(response["url"])
+                    logger.info(f"{uid}, {decoded_url}")
+                    if "投诉" in decoded_url:
+                        #该账号因被投诉违反《微博社区公约》的相关规定，现已无法查看
+                        #该账号因被投诉违反法律法规和《微博社区公约》的相关规定，现已无法查看
+                        result["status"]="banned"
+                    if "验证" in decoded_url:
+                        #该账号内容存在风险，用户验证之前暂时不能查看
+                        #该账号行为异常，存在安全风险，用户验证之前暂时不能查看
+                        #该账号当前处于异常状态，用户验证之前暂时不能查看
+                        result["status"]="risky"
+                    if "自行" in decoded_url:
+                        #该账号因用户自行申请关闭，现已无法查看
+                        result["status"]="closed"
+                else:
+                    result["status"]=response["error_type"]
+            #alternatively you could get response like {'user': {}, 'message': '用户不存在', 'abnormal': True, 'ok': 1}
             return result
 
     def get_profile_info(self, uid):
         """
-        Returns: account status and user object
+        Returns: account status and user object; with rate limit or other error, returns None
         Even if the account has a custom url, if its status is normal, you should still be able to get the correct information using the numeric id
         """
         url = "https://weibo.com/ajax/profile/info"
@@ -319,29 +357,34 @@ class WeiboBot:
 
         form = {"uid": str(uid)}
         r = self._session.get(url=url, headers=headers, params=form)
-        logger.debug(f"uid-{uid} http status: {r.status_code}")
-        response = r.json()
-        result = {"uid":uid}
-        return self._extract_user_from_info(uid=uid, response=response)
+        if r.status_code in [414,418]:
+            return None
+        try:
+            response = r.json()
+            return self._extract_user_from_info(uid=uid, response=response, status_code=r.status_code)
+        except:
+            return None
 
     async def get_profile_info_async(self, session, uid):
         """
-        Returns: account status and user object
+        Returns: account status and user object; with rate limit or other error, returns None
         Even if the account has a custom url, if its status is normal, you should still be able to get the correct information using the numeric id
+        Can be used with guest session with SUB cookie set: aiohttp.ClientSession(cookies={"SUB": WeiboBot.get_visitor_sub()})
         """
         url = "https://weibo.com/ajax/profile/info"
         headers = copy.deepcopy(DM_HEADERS)
         headers["x-requested-with"] = "XMLHttpRequest"
         headers["Referer"] = f"https://weibo.com/u/{uid}"
+        #headers["User-Agent"] = ua.random
         form = {"uid": str(uid)}
         try:
             async with session.get(url, headers=headers, params=form) as r:
+                #logger.debug(r.text)
                 response = await r.json()
-                logger.debug(f"uid-{uid} http status: {r.status}")
-                return self._extract_user_from_info(uid=uid, response=response)
-        except:
+                return self._extract_user_from_info(uid=uid, response=response, status_code=r.status)
+        except Exception as e:
+            print(e)
             return None
-
 
     def get_profile_details(self, uid):
         url = "https://weibo.com/ajax/profile/detail"
@@ -351,18 +394,26 @@ class WeiboBot:
 
         form = {"uid": str(uid)}
         r = self._session.get(url=url, headers=headers, params=form)
-        logger.debug(f"uid-{uid} http status: {r.status_code}")
+        if r.status_code in [414,418]:
+            return None
         response = r.json()
+        logger.debug(response)
+        if 'msg' in response:
+            # you could still get this even with 200 status
+            if '访问频次过高' in response['msg']:
+                return None
         try:
             data = response["data"]
             data["uid"] = uid
             #print(f"{data['sunshine_credit']}, {data['created_at']}")
             return data
         except:
-            logger.debug(f"{response['error_type']}")
             return None
 
     async def get_profile_details_async(self, session, uid):
+        """
+        this api returns ip_location if available
+        """
         url = "https://weibo.com/ajax/profile/detail"
         headers = copy.deepcopy(DM_HEADERS)
         headers["x-requested-with"] = "XMLHttpRequest"
@@ -370,9 +421,15 @@ class WeiboBot:
         form = {"uid": str(uid)}
         try:
             async with session.get(url, headers=headers, params=form) as r:
-                response = await r.json()
                 logger.debug(f"uid-{uid} http status: {r.status}")
+                if r.status!=200:
+                    return None
                 try:
+                    response = await r.json()
+                    if 'msg' in response:
+                        # you could still get this even with 200 status
+                        if '访问频次过高' in response['msg']:
+                            return None
                     data = response["data"]
                     data["uid"] = uid
                     #print(f"{data['sunshine_credit']}, {data['created_at']}")
@@ -380,7 +437,7 @@ class WeiboBot:
                 except:
                     logger.debug(f"{uid}, {response['error_type']}")
                     return None
-        except:
+        except Exception as e:
             return None
 
     def _extract_mute_status(self, uid=None,response=None):
@@ -410,7 +467,6 @@ class WeiboBot:
         form = {"uid": str(uid)}
 
         r = self._session.get(url=url, headers=headers, params=form)
-        logger.debug(f"uid-{uid} http status: {r.status_code}")
         if r.status_code!=200:
             return None
         try:
@@ -427,12 +483,59 @@ class WeiboBot:
         form = {"uid": str(uid)}
         try:
             async with session.get(url, headers=headers, params=form) as r:
-                response = await r.json()
-                logger.debug(f"check_muted_async: uid-{uid} http status: {r.status}")
+                logger.debug(f"uid-{uid} http status: {r.status}")
                 if r.status!=200:
                     return None
+                response = await r.json()
                 return self._extract_mute_status(uid=uid, response=response)
-        except:
+        except Exception as e:
+            return None
+
+    @staticmethod
+    def get_m_profile(uid):
+        """
+        this API cannot distinguish abnormal/non-existing/banned
+        """
+        url = f"https://m.weibo.cn/api/container/getIndex"
+        headers = copy.deepcopy(DM_HEADERS)
+        headers["Referer"] = f"https://m.weibo.cn/u/{uid}"
+        headers["x-requested-with"] = "XMLHttpRequest"
+        form = {
+            "type": "uid",
+            "value": uid,
+            "containerid": f"100505{uid}"
+        }
+        r = WeiboBot._no_login_session.get(url=url, headers=headers, params=form)
+        logger.debug(r.status_code)
+        if r.status_code!=200:
+            return None
+        try:
+            #logger.debug(r.text)
+            response = r.json()
+            return response
+        except Exception as e:
+            print(e)
+            return None
+
+    @staticmethod
+    async def get_m_profile_async(session, uid):
+        url = f"https://m.weibo.cn/api/container/getIndex"
+        headers = copy.deepcopy(DM_HEADERS)
+        headers["Referer"] = f"https://m.weibo.cn/u/{uid}"
+        headers["x-requested-with"] = "XMLHttpRequest"
+        form = {
+            "type": "uid",
+            "value": uid,
+            "containerid": f"100505{uid}"
+        }
+        try:
+            async with session.get(url, headers=headers, params=form) as r:
+                logger.debug(f"uid-{uid} http status: {r.status}")
+                if r.status!=200:
+                    return None
+                response = await r.json()
+                return response
+        except Exception as e:
             return None
 
     def get_posts(self, uid, start_page = None):
@@ -465,6 +568,8 @@ class WeiboBot:
                 time.sleep(1)
                 retry_count+=1
                 continue
+            if "data" not in response:
+                break
             posts = response["data"]["list"]
             if len(posts)==0:
                 break
@@ -475,6 +580,9 @@ class WeiboBot:
 
     @staticmethod
     def get_m_posts(uid, max_page_count = -1):
+        """
+        getting posts from the m.weibo.cn site
+        """
         url = f"https://m.weibo.cn/api/container/getIndex"
         headers = copy.deepcopy(DM_HEADERS)
         headers["Referer"] = f"https://m.weibo.cn/u/{uid}"
@@ -488,7 +596,6 @@ class WeiboBot:
         retry_count = 0
         while True:
             r = WeiboBot._no_login_session.get(url=url, headers=headers, params=form)
-            logger.debug(r.status_code)
             logger.debug(r.text)
             if r.status_code == 200:
                 response = r.json()
